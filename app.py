@@ -1,3 +1,4 @@
+import gc
 import os
 import torch
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory
@@ -41,20 +42,27 @@ decoder.load_state_dict(torch.load('experiment/final_exp/decoder_final.pth', map
 encoder.eval()
 decoder.eval()
 
+for p in encoder.parameters():
+    p.requires_grad = False
+
+for p in decoder.parameters():
+    p.requires_grad = False
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
     content_transform = transforms.Compose([
-        transforms.Resize(224),
+        transforms.Resize(256),
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(224),
+        transforms.Resize(256),
         transforms.ToTensor()
     ])
+
     content_image = content_transform(content_image).unsqueeze(0).to(device)
     style_image = style_transform(style_image).unsqueeze(0).to(device)
 
@@ -62,11 +70,19 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
         content_feats = encoder(content_image, is_test=True)
         style_feats = encoder(style_image, is_test=True)
 
-        stylized_feats = adaptive_instance_normalization(content_feats, style_feats)
+        stylized_feats = adaptive_instance_normalization(
+            content_feats, style_feats
+        )
 
-        stylized_feats = alpha * stylized_feats + (1 - alpha) * content_feats
+        stylized_feats = alpha * stylized_feats + \
+                         (1 - alpha) * content_feats
 
         stylized_image = decoder(stylized_feats)
+
+    del content_feats
+    del style_feats
+    del stylized_feats
+    gc.collect()
 
     return stylized_image
 
@@ -77,7 +93,11 @@ def save_image(image, path):
     image = image.clamp(0, 1)
     image = transforms.ToPILImage()(image)
     image.save(path)
+    
+    import gc
 
+    del stylized_image
+    gc.collect()
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -112,6 +132,9 @@ def index():
             try:
                 content_image = Image.open(content_path).convert('RGB')
                 style_image = Image.open(style_path).convert('RGB')
+
+                content_image.thumbnail((256, 256))
+                style_image.thumbnail((256, 256))
 
                 alpha = float(form.alpha.data)
                 stylized_image = style_transfer(content_image, style_image, encoder, decoder, alpha, device)
