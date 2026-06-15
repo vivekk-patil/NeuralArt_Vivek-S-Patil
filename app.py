@@ -87,6 +87,8 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
     del content_feats
     del style_feats
     del stylized_feats
+    del content_image
+    del style_image
     gc.collect()
 
     return stylized_image
@@ -166,9 +168,11 @@ def index():
             except Exception as e:
                 error = str(e)
             else:
-                if not content_filename:
-                     error = 'Please upload content image'
-                if not style_filename:
+                
+                if request.method == 'POST' and not content_filename:
+                    error = 'Please upload content image'
+
+                if request.method == 'POST' and not style_filename:
                     error = 'Please upload style image'
 
     return render_template('index.html', form=form, result_image=result_image, content_image=content_filename,
