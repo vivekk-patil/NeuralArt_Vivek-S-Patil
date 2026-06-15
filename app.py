@@ -32,7 +32,7 @@ class UploadForm(FlaskForm):
     alpha = FloatField('Alpha', default=1.0)
     submit = SubmitField('Transfer Style')
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 encoder = VGGEncoder('vgg_normalised.pth').to(device)
 decoder = Decoder().to(device)
@@ -137,33 +137,42 @@ def index():
                 style_image.thumbnail((128, 128))
 
                 alpha = float(form.alpha.data)
-                stylized_image = style_transfer(content_image, style_image, encoder, decoder, alpha, device)
+
+                stylized_image = style_transfer(
+                content_image,
+                style_image,
+                encoder,
+                decoder,
+                alpha,
+                device
+          )
 
                 result_filename = 'stylized_' + content_filename
-                result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
+                result_path = os.path.join(
+                app.config['UPLOAD_FOLDER'],
+                result_filename
+    )
+
                 save_image(stylized_image, result_path)
-                
+
+                del stylized_image
+                gc.collect()
+ 
+                content_image.close()
+                style_image.close()
+
                 result_image = result_filename
+
             except Exception as e:
                 error = str(e)
-    else:
-        if not content_filename:
-            error = 'Please upload content image'
-        if not style_filename:
-            error = 'Please upload style image'
+            else:
+                if not content_filename:
+                     error = 'Please upload content image'
+                if not style_filename:
+                    error = 'Please upload style image'
 
     return render_template('index.html', form=form, result_image=result_image, content_image=content_filename,
                            style_image=style_filename, error=error)
-
-    save_image(stylized_image, result_path)
-
-    del stylized_image
-    gc.collect()
-
-    content_image.close()
-    style_image.close()
-
-    result_image = result_filename
 
 
 @app.route('/uploads/<filename>')
