@@ -36,8 +36,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 encoder = VGGEncoder('vgg_normalised.pth').to(device)
 decoder = Decoder().to(device)
-#decoder.load_state_dict(torch.load('C:\Users\vivek\OneDrive\Desktop\Projects\NST\NST_Code\experiment\final_exp\decoder_final.pth'))
-decoder.load_state_dict(torch.load('experiment/final_exp/decoder_final.pth', map_location=torch.device('cpu')))
+
+decoder.load_state_dict(
+    torch.load(
+        'experiment/final_exp/decoder_final.pth',
+        map_location=device
+    )
+)
 
 encoder.eval()
 decoder.eval()
@@ -54,12 +59,12 @@ def allowed_file(filename):
 
 def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
     content_transform = transforms.Compose([
-        transforms.Resize(256),
+        transforms.Resize(128),
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(256),
+        transforms.Resize(128),
         transforms.ToTensor()
     ])
 
@@ -93,11 +98,6 @@ def save_image(image, path):
     image = image.clamp(0, 1)
     image = transforms.ToPILImage()(image)
     image.save(path)
-    
-    import gc
-
-    del stylized_image
-    gc.collect()
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -133,8 +133,8 @@ def index():
                 content_image = Image.open(content_path).convert('RGB')
                 style_image = Image.open(style_path).convert('RGB')
 
-                content_image.thumbnail((256, 256))
-                style_image.thumbnail((256, 256))
+                content_image.thumbnail((128, 128))
+                style_image.thumbnail((128, 128))
 
                 alpha = float(form.alpha.data)
                 stylized_image = style_transfer(content_image, style_image, encoder, decoder, alpha, device)
@@ -154,6 +154,16 @@ def index():
 
     return render_template('index.html', form=form, result_image=result_image, content_image=content_filename,
                            style_image=style_filename, error=error)
+
+    save_image(stylized_image, result_path)
+
+    del stylized_image
+    gc.collect()
+
+    content_image.close()
+    style_image.close()
+
+    result_image = result_filename
 
 
 @app.route('/uploads/<filename>')
