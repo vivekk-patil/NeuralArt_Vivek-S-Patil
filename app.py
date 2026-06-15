@@ -1,4 +1,3 @@
-import gc
 import os
 import torch
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory
@@ -32,26 +31,14 @@ class UploadForm(FlaskForm):
     alpha = FloatField('Alpha', default=1.0)
     submit = SubmitField('Transfer Style')
 
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 encoder = VGGEncoder('vgg_normalised.pth').to(device)
 decoder = Decoder().to(device)
-
-decoder.load_state_dict(
-    torch.load(
-        'experiment/final_exp/decoder_final.pth',
-        map_location=device
-    )
-)
+decoder.load_state_dict(torch.load('C:\\Users\\vivek\\OneDrive\\Desktop\\Projects\\NST\\NST_Code\\experiment\\final_exp\\decoder_final.pth'))
 
 encoder.eval()
 decoder.eval()
-
-for p in encoder.parameters():
-    p.requires_grad = False
-
-for p in decoder.parameters():
-    p.requires_grad = False
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -59,15 +46,14 @@ def allowed_file(filename):
 
 def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
     content_transform = transforms.Compose([
-        transforms.Resize(64),
+        transforms.Resize(512),
         transforms.ToTensor()
     ])
 
     style_transform = transforms.Compose([
-        transforms.Resize(64),
+        transforms.Resize(512),
         transforms.ToTensor()
     ])
-
     content_image = content_transform(content_image).unsqueeze(0).to(device)
     style_image = style_transform(style_image).unsqueeze(0).to(device)
 
@@ -75,21 +61,11 @@ def style_transfer(content_image, style_image, encoder, decoder, alpha, device):
         content_feats = encoder(content_image, is_test=True)
         style_feats = encoder(style_image, is_test=True)
 
-        stylized_feats = adaptive_instance_normalization(
-            content_feats, style_feats
-        )
+        stylized_feats = adaptive_instance_normalization(content_feats, style_feats)
 
-        stylized_feats = alpha * stylized_feats + \
-                         (1 - alpha) * content_feats
+        stylized_feats = alpha * stylized_feats + (1 - alpha) * content_feats
 
         stylized_image = decoder(stylized_feats)
-
-    del content_feats
-    del style_feats
-    del stylized_feats
-    del content_image
-    del style_image
-    gc.collect()
 
     return stylized_image
 
@@ -100,6 +76,7 @@ def save_image(image, path):
     image = image.clamp(0, 1)
     image = transforms.ToPILImage()(image)
     image.save(path)
+
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -135,45 +112,21 @@ def index():
                 content_image = Image.open(content_path).convert('RGB')
                 style_image = Image.open(style_path).convert('RGB')
 
-                content_image.thumbnail((64, 64))
-                style_image.thumbnail((64, 64))
-
                 alpha = float(form.alpha.data)
-
-                stylized_image = style_transfer(
-                content_image,
-                style_image,
-                encoder,
-                decoder,
-                alpha,
-                device
-          )
+                stylized_image = style_transfer(content_image, style_image, encoder, decoder, alpha, device)
 
                 result_filename = 'stylized_' + content_filename
-                result_path = os.path.join(
-                app.config['UPLOAD_FOLDER'],
-                result_filename
-    )
-
+                result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
                 save_image(stylized_image, result_path)
-
-                del stylized_image
-                gc.collect()
- 
-                content_image.close()
-                style_image.close()
-
+                
                 result_image = result_filename
-
             except Exception as e:
                 error = str(e)
-            else:
-                
-                if request.method == 'POST' and not content_filename:
-                    error = 'Please upload content image'
-
-                if request.method == 'POST' and not style_filename:
-                    error = 'Please upload style image'
+    else:
+        if not content_filename:
+            error = 'Please upload content image'
+        if not style_filename:
+            error = 'Please upload style image'
 
     return render_template('index.html', form=form, result_image=result_image, content_image=content_filename,
                            style_image=style_filename, error=error)
@@ -192,5 +145,3 @@ def send_example(filename):
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
     run_simple('localhost', 5000, app, use_reloader=True, use_debugger=True)
-
-
